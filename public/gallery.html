@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photobooth Strip Gallery</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+        
+        :root { --text-color: #ff4d6d; }
+        * { box-sizing: border-box; font-family: 'Nunito', sans-serif; }
+        
+        body { margin: 0; padding: 0; background-color: #fff0f3; color: #333; display: flex; flex-direction: column; height: 100vh;}
+        header { background: white; padding: 20px 40px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; z-index: 10;}
+        h1 { margin: 0; color: var(--text-color); font-weight: 900; font-size: 2rem; }
+
+        .print-btn { background: var(--text-color); color: white; border: none; padding: 12px 20px; font-size: 1rem; font-weight: 900; border-radius: 30px; cursor: pointer; box-shadow: 0 5px 15px rgba(255, 77, 109, 0.3); transition: 0.2s;}
+        .print-btn:active { transform: scale(0.95); }
+        .print-btn.disabled { background: #ccc; pointer-events: none; box-shadow: none; }
+
+        .gallery-container { flex: 1; padding: 40px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 30px; align-content: flex-start;}
+        .strip-wrapper { background: white; padding: 10px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); cursor: pointer; transition: 0.2s; border: 4px solid transparent; position: relative;}
+        .strip-wrapper:hover { transform: translateY(-5px); }
+        .strip-wrapper.selected { border-color: var(--text-color); transform: scale(1.05); box-shadow: 0 15px 30px rgba(255, 77, 109, 0.3);}
+        .strip-wrapper.selected::after { content: "✓"; position: absolute; top: -10px; right: -10px; background: var(--text-color); color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.2rem;}
+        .strip-wrapper img { width: 100%; height: auto; display: block; border-radius: 5px; }
+        #empty-state { text-align: center; grid-column: 1 / -1; font-size: 1.5rem; color: #999; margin-top: 50px; }
+
+        #print-area { display: none; }
+        @media print {
+            body > :not(#print-area) { display: none !important; opacity: 0 !important; visibility: hidden !important; }
+            #print-area { display: flex !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: white !important; z-index: 999999 !important; justify-content: center; align-items: center; margin: 0 !important; padding: 0 !important; transform: scale(0.98); transform-origin: center;}
+            @page { size: 4in 6in; margin: 0mm; }
+            #print-area.print-strips { flex-direction: row; gap: 0 !important; justify-content: center; align-items: center; width: 100%; height: 100%;}
+            #print-area.print-strips img { width: 50vw !important; max-width: 50vw !important; height: 100vh !important; max-height: 100vh !important; object-fit: fill !important; margin: 0 !important; padding: 0 1mm !important; display: block; box-sizing: border-box;}
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🖼️ Strip Gallery</h1>
+        <div style="display: flex; gap: 10px;">
+            <button id="view-btn" class="print-btn disabled" onclick="viewSelected()" style="background: #28a745;">👁️ View Session</button>
+            <button id="edit-btn" class="print-btn disabled" onclick="editSelected()" style="background: #007bff;">✏️ Customize & Reprint</button>
+            <button id="print-btn" class="print-btn disabled" onclick="printSelected()">🖨️ Quick Print (2 Copies)</button>
+        </div>
+    </header>
+
+    <div class="gallery-container" id="gallery-grid"></div>
+    <div id="print-area"></div>
+
+    <script>
+        let selectedSessionId = null;
+        let selectedStripUrl = null;
+
+        window.onload = async () => {
+            const grid = document.getElementById('gallery-grid');
+            try {
+                const res = await fetch('/api/sessions');
+                const data = await res.json();
+                
+                if (data.success && data.sessions.length > 0) {
+                    data.sessions.forEach(session => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'strip-wrapper';
+                        wrapper.onclick = () => selectStrip(wrapper, session.id, session.strip);
+                        
+                        const img = document.createElement('img');
+                        img.src = session.strip;
+                        img.loading = "lazy";
+                        
+                        wrapper.appendChild(img);
+                        grid.appendChild(wrapper);
+                    });
+                } else {
+                    grid.innerHTML = '<div id="empty-state">No photostrips found yet!</div>';
+                }
+            } catch (err) {
+                grid.innerHTML = '<div id="empty-state">Error loading gallery.</div>';
+            }
+        };
+
+        function selectStrip(element, sessionId, url) {
+            document.querySelectorAll('.strip-wrapper').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            selectedSessionId = sessionId;
+            selectedStripUrl = url;
+            document.getElementById('view-btn').classList.remove('disabled');
+            document.getElementById('edit-btn').classList.remove('disabled');
+            document.getElementById('print-btn').classList.remove('disabled');
+        }
+
+        // --- NEW VIEW SESSION FUNCTION ---
+        function viewSelected() {
+            if (!selectedSessionId) return;
+            // Opens the generated session index.html in a new tab
+            window.open(`/galleries/${selectedSessionId}/index.html`, '_blank');
+        }
+
+        function editSelected() {
+            if (!selectedSessionId) return;
+            // Redirects to the main app with the session ID loaded
+            window.location.href = `/?session=${selectedSessionId}`;
+        }
+
+        function printSelected() {
+            if (!selectedStripUrl) return;
+            const printArea = document.getElementById('print-area');
+            printArea.innerHTML = ''; 
+            printArea.className = 'print-strips';
+            
+            // Generate two copies for the 4x6 split layout
+            const img1 = document.createElement('img'); img1.src = selectedStripUrl;
+            const img2 = document.createElement('img'); img2.src = selectedStripUrl;
+            printArea.appendChild(img1); printArea.appendChild(img2);
+            
+            setTimeout(() => { window.print(); }, 500);
+        }
+    </script>
+</body>
+</html>
